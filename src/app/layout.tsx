@@ -24,7 +24,7 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Konwenty NanoKarrin",
   description:
-    "Wszystkie konwenty (przyszłe i archiwalne), w których uczestniczyło NanoKarrin — polska grupa dubbingowa. Programy, godziny, atrakcje.",
+    "Wszystkie konwenty (przyszłe i archiwalne), w których uczestniczyło NanoKarrin - polska grupa dubbingowa. Programy, godziny, atrakcje.",
 };
 
 export default function RootLayout({
