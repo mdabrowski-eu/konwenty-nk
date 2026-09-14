@@ -6,6 +6,7 @@ import {
   displayName,
   buildDayProgram,
   buildPrograms,
+  isSlotCovered,
   warsawToday,
   isPast,
   formatFullDate,
@@ -144,6 +145,53 @@ describe("buildDayProgram — single lane", () => {
     );
     // Slots 17..21 (5 slots); starting at 21:00 only 1 slot remains.
     expect(prog.lanes[0]!.cells["21:00"]!.span).toBe(1);
+  });
+});
+
+describe("isSlotCovered — rowSpan grid arithmetic", () => {
+  // Regression: the renderer must NEVER skip rows for covered slots —
+  // rowSpan counts rendered rows, so a skipped row would make a 2-hour
+  // cell stretch over 10:00+12:00 (losing 11:00) and push the 12:00
+  // event into a phantom extra column.
+  it("2-hour event at 10:00 covers 11:00 but not 12:00", () => {
+    const day: ConventDay = { date: DAY.date, startTime: "10:00", endTime: "14:00" };
+    const prog = buildDayProgram(day, [LANE_A], [item({ startTime: "10:00", durationHours: 2 })], NO_EVENTS);
+    const slots = prog.slots; // ["10:00","11:00","12:00","13:00"]
+    expect(slots).toEqual(["10:00", "11:00", "12:00", "13:00"]);
+    expect(isSlotCovered(prog.lanes[0]!, slots, 1)).toBe(true); // 11:00 covered
+    expect(isSlotCovered(prog.lanes[0]!, slots, 2)).toBe(false); // 12:00 free
+    expect(isSlotCovered(prog.lanes[0]!, slots, 3)).toBe(false);
+  });
+
+  it("3-hour event at 17:00 covers 18:00 and 19:00", () => {
+    const prog = buildDayProgram(DAY, [LANE_A], [item({ startTime: "17:00", durationHours: 3 })], NO_EVENTS);
+    const slots = prog.slots;
+    expect(isSlotCovered(prog.lanes[0]!, slots, 1)).toBe(true);
+    expect(isSlotCovered(prog.lanes[0]!, slots, 2)).toBe(true);
+    expect(isSlotCovered(prog.lanes[0]!, slots, 3)).toBe(false); // 20:00 free
+  });
+
+  it("start slot itself is never covered", () => {
+    const prog = buildDayProgram(DAY, [LANE_A], [item({ startTime: "18:00", durationHours: 3 })], NO_EVENTS);
+    const slots = prog.slots;
+    expect(isSlotCovered(prog.lanes[0]!, slots, slots.indexOf("18:00"))).toBe(false);
+  });
+
+  it("covering in one lane does not affect another lane", () => {
+    const prog = buildDayProgram(
+      DAY,
+      [LANE_A, LANE_B],
+      [item({ startTime: "17:00", durationHours: 2, laneId: "lane-a" })],
+      NO_EVENTS,
+    );
+    const slots = prog.slots;
+    expect(isSlotCovered(prog.lanes[0]!, slots, 1)).toBe(true); // lane-a covered
+    expect(isSlotCovered(prog.lanes[1]!, slots, 1)).toBe(false); // lane-b free
+  });
+
+  it("cell at the very last slot cannot leak past the table", () => {
+    const prog = buildDayProgram(DAY, [LANE_A], [item({ startTime: "21:00", durationHours: 1 })], NO_EVENTS);
+    expect(isSlotCovered(prog.lanes[0]!, prog.slots, prog.slots.length - 1)).toBe(false);
   });
 });
 

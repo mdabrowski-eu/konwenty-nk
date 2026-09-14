@@ -156,6 +156,29 @@ export function buildPrograms(
   return days.map((day) => buildDayProgram(day, lanes, items, eventsBySlug));
 }
 
+/**
+ * True when a cell starting EARLIER in this lane spans over the slot at
+ * `slotIdx` (i.e. this grid position is already occupied by a rowSpan from
+ * above). Rows are NEVER skipped in rendering — every hour keeps its row
+ * and label; for covered positions the cell is simply not emitted (the
+ * spanning cell covers it). Skipping whole rows would corrupt rowSpan
+ * arithmetic (the span would reach over the removed row into the next one).
+ */
+export function isSlotCovered(
+  lane: LaneColumn,
+  slots: string[],
+  slotIdx: number,
+): boolean {
+  for (const [start, cell] of Object.entries(lane.cells)) {
+    if (!cell) continue;
+    const startIdx = slots.indexOf(start);
+    if (startIdx !== -1 && startIdx < slotIdx && startIdx + cell.span > slotIdx) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Date helpers (Europe/Warsaw — grouping must not flip a day early/late for
 // Polish visitors due to the server/browser timezone)

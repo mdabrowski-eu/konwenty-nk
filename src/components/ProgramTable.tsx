@@ -1,5 +1,5 @@
 import type { DayProgram } from "@/lib/program";
-import { formatWeekday, formatFullDate } from "@/lib/program";
+import { formatWeekday, formatFullDate, isSlotCovered } from "@/lib/program";
 
 /**
  * Program grid for one convent: a section per day.
@@ -40,30 +40,14 @@ function TableForDay({ program, accent }: { program: DayProgram; accent: "rose" 
             </tr>
           </thead>
           <tbody>
-            {program.slots.map((slot, slotIdx) => {
-              // Rows entirely covered by a rowSpan from above are skipped —
-              // the spanning cell already occupies the grid position.
-              const anyCellStartsHere = program.lanes.some(
-                (lane) => lane.cells[slot] !== undefined,
-              );
-              const coveredAbove = program.lanes.some((lane) => {
-                for (const [start, cell] of Object.entries(lane.cells)) {
-                  if (!cell) continue;
-                  const startIdx = program.slots.indexOf(start);
-                  if (startIdx < slotIdx && startIdx + cell.span > slotIdx) return true;
-                }
-                return false;
-              });
-              if (!anyCellStartsHere && coveredAbove) return null;
-
-              return (
-                <tr key={slot} className="even:bg-sky/20">
-                  <td className="px-3 py-2 md:px-4 font-display text-xs md:text-sm font-bold text-ink border-b border-ink/20 align-top whitespace-nowrap">
-                    {slot}
-                  </td>
-                  {program.lanes.map((lane) => {
-                    const cell = lane.cells[slot];
-                    if (!cell) return <td key={lane.laneId} className="border-b border-ink/20 border-l-[2px] border-l-ink/10" />;
+            {program.slots.map((slot, slotIdx) => (
+              <tr key={slot} className="even:bg-sky/20">
+                <td className="px-3 py-2 md:px-4 font-display text-xs md:text-sm font-bold text-ink border-b border-ink/20 align-top whitespace-nowrap">
+                  {slot}
+                </td>
+                {program.lanes.map((lane) => {
+                  const cell = lane.cells[slot];
+                  if (cell) {
                     return (
                       <td
                         key={lane.laneId}
@@ -73,10 +57,22 @@ function TableForDay({ program, accent }: { program: DayProgram; accent: "rose" 
                         {cell.name}
                       </td>
                     );
-                  })}
-                </tr>
-              );
-            })}
+                  }
+                  // Covered by a rowSpan from above → emit nothing (the
+                  // spanning cell already occupies this grid position);
+                  // every other empty slot gets an empty cell.
+                  if (isSlotCovered(lane, program.slots, slotIdx)) {
+                    return null;
+                  }
+                  return (
+                    <td
+                      key={lane.laneId}
+                      className="border-b border-ink/20 border-l-[2px] border-l-ink/10"
+                    />
+                  );
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
