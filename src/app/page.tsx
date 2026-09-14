@@ -300,19 +300,18 @@ export default function Home() {
               className="block text-[13vw] md:text-[8vw] lg:text-[6.5rem] outlined-text animate-rise"
               style={{ animationDelay: "0.15s" }}
             >
-              BYLIŚMY
+              BĘDZIEMY
             </span>
           </h1>
           <p
             className="mt-6 max-w-xl text-lg md:text-xl leading-snug text-ink/85 animate-rise"
             style={{ animationDelay: "0.3s" }}
           >
-            Wszystkie konwenty —{" "}
+            Wszystkie konwenty, 
             <span className="font-accent italic text-rose text-2xl md:text-3xl">
-              przyszłe i archiwalne
+              przyszłe i zakończone
             </span>{" "}
-            — w których NanoKarrin bierze udział. Kliknij konwent, aby rozwinąć
-            program: godziny i atrakcje.
+            w których NanoKarrin bierze lub brało udział. Kliknij konwent, aby zobaczyć nasz program.
           </p>
         </div>
       </section>
