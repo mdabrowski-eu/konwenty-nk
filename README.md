@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Konwenty NanoKarrin — strona konwentowa
 
-## Getting Started
+Statyczna SPA z listą wszystkich konwentów (przyszłych i archiwalnych), w
+których uczestniczyło **NanoKarrin**. Next.js (App Router) + Tailwind v4,
+eksportowana jako static site i hostowana na **GitHub Pages**.
 
-First, run the development server:
+Strona nie przechowuje żadnego stanu — w czasie rzeczywistym pobiera dane z
+publicznego API planera konwentów (`konwenty-migration-to-aws`):
+
+- `GET /api/public/convents` — lista publicznych konwentów (nazwa + daty),
+- `GET /api/public/{slug}` — pełny program (dni, ścieżki, godziny, atrakcje).
+
+Paneliści są celowo niewyświetlani — strona pokazuje wyłącznie godziny i nazwy
+atrakcji.
+
+## Lokalnie
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Bez `NEXT_PUBLIC_API_BASE` strona próbuje czytać z tego samego origin
+(`/api/...`) — do pełnego lokalnego stacka uruchom dev-server planera
+(`npm run dev:server` w repo `konwenty-migration-to-aws`), albo podaj jawny
+adres:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+NEXT_PUBLIC_API_BASE=http://localhost:3000 npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Testy
 
-## Learn More
+```bash
+npx vitest run
+```
 
-To learn more about Next.js, take a look at the following resources:
+Logika siatki programu (`src/lib/program.ts`) — sloty godzinne, rowSpan,
+kolizje, daty (strefa Europe/Warsaw) — jest pokryta testami jednostkowymi.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Build statyczny
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+GITHUB_PAGES=true NEXT_PUBLIC_API_BASE=https://d2igwyf6wr5q7y.cloudfront.net npm run build
+# output: ./out
+```
 
-## Deploy on Vercel
+`GITHUB_PAGES=true` ustawia `basePath`/`assetPrefix` na `/konwenty-nk`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push na `main` → workflow `.github/workflows/deploy.yml` buduje i publikuje na
+GitHub Pages.
+
+**Wymagania w repo na GitHubie:**
+
+1. Settings → Pages → *Source*: **GitHub Actions**.
+2. Settings → Secrets and variables → Actions → **Variables** → dodaj
+   `NEXT_PUBLIC_API_BASE` = `https://d2igwyf6wr5q7y.cloudfront.net`.
+3. Pierwszy push na `main` uruchomi pipeline; URL pojawi się w zakładce Actions.
+
+## Struktura
+
+- `src/app/page.tsx` — SPA: lista konwentów (Nadchodzące / Archiwum), rozwijane
+  programy (lazy fetch + cache w pamięci)
+- `src/components/ConventCard.tsx` — karta konwentu (rozwijanie, stany
+  ładowania/błędu)
+- `src/components/ProgramTable.tsx` — siatka programu: 1 ścieżka → 2 kolumny,
+  wiele ścieżek → kolumna na ścieżkę; wiersze = godziny; rowSpan dla
+  wielogodzinnych pozycji; pozycje poza siatką w przypisie „Pozostałe”
+- `src/lib/api.ts` — klient publicznego API (fetch, timeout, typy błędów)
+- `src/lib/program.ts` — czysta logika siatki + daty (testowalna)
+- `src/lib/types.ts` — typy odpowiedzi API
+- `src/app/globals.css` — tokeny brandingowe (jak w bitwy-dubbingowe-info)
+
+## API i CORS
+
+Publiczne endpointy planera wymagają nagłówka CORS dla originu strony
+(`mdabrowski-eu.github.io`, `konwenty.nanokarrin.pl`) — konfiguracja w
+`infra/apigateway.tf` repo planera. CSRF nie dotyczy tego integracji: API
+używa Bearer auth (nie ciasteczek), a wywoływane endpointy są publiczne i
+read-only.
