@@ -7,21 +7,6 @@ import type { PublicConventDetail } from "@/lib/types";
 
 const DISCORD_URL = "https://discord.com/invite/nanokarrin";
 
-const tickerWords = [
-  "KONCERTY",
-  "LIVE DUBBING",
-  "WARSZTATY",
-  "QUIZY",
-  "KARAOKE",
-  "SCENKI",
-  "WOKAL",
-  "COVERY",
-  "TEKSTY",
-  "DIALOGI",
-  "PANELERIE",
-  "GRA IMPROWIZACYJNA",
-];
-
 type Status = "idle" | "loading" | "error" | "ready";
 
 export default function Home() {
@@ -222,28 +207,6 @@ export default function Home() {
           </p>
         </div>
       </section>
-
-      {/* === TICKER === */}
-      <div
-        className="overflow-hidden border-y-[3px] border-ink bg-paper py-2 md:py-3"
-        aria-hidden
-      >
-        <div className="animate-marquee flex whitespace-nowrap w-max">
-          {[0, 1].map((copy) => (
-            <div key={copy} className="flex">
-              {tickerWords.map((word, i) => (
-                <span
-                  key={`${copy}-${i}`}
-                  className="font-display font-extrabold uppercase text-sm md:text-lg tracking-[0.1em] text-ink mx-4 md:mx-6 flex items-center gap-4"
-                >
-                  {word}
-                  <span className="w-2 h-2 rounded-full bg-rose inline-block" />
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* === LIST === */}
       <section className="px-6 md:px-10 py-10 md:py-14">
