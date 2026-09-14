@@ -307,11 +307,11 @@ export default function Home() {
             className="mt-6 max-w-xl text-lg md:text-xl leading-snug text-ink/85 animate-rise"
             style={{ animationDelay: "0.3s" }}
           >
-            Wszystkie konwenty, 
+            Wszystkie konwenty, {" "}
             <span className="font-accent italic text-rose text-2xl md:text-3xl">
               przyszłe i zakończone
             </span>{" "}
-            w których NanoKarrin bierze lub brało udział. Kliknij konwent, aby zobaczyć nasz program.
+            ,w których NanoKarrin bierze lub brało udział. Kliknij konwent, aby zobaczyć nasz program.
           </p>
         </div>
       </section>
