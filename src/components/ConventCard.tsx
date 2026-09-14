@@ -21,6 +21,11 @@ export type ConventCardProps = {
   loading: boolean;
   /** Per-card error message (retryable via onRetry). */
   error: string | null;
+  /**
+   * Quiet stale-while-revalidate notice: stale data is shown and a
+   * background revalidation failed. Non-blocking, retryable via onRetry.
+   */
+  notice: string | null;
   onToggle: () => void;
   onRetry: () => void;
 };
@@ -31,6 +36,7 @@ export function ConventCard({
   detail,
   loading,
   error,
+  notice,
   onToggle,
   onRetry,
 }: ConventCardProps) {
@@ -114,6 +120,12 @@ export function ConventCard({
       </button>
       {body !== null && (
         <div className="px-4 pb-5 md:px-6 md:pb-6 border-t-[2px] border-dashed border-ink/30 pt-4">
+          {notice && (
+            <p className="mb-3 text-xs md:text-sm text-ink/60 flex items-center gap-2" role="status">
+              <span className="inline-block w-2 h-2 rounded-full bg-mint shrink-0" />
+              {notice}
+            </p>
+          )}
           {body}
         </div>
       )}

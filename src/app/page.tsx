@@ -3,9 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConventCard } from "@/components/ConventCard";
 import { fetchPublicConvents, fetchPublicConvent, ApiError } from "@/lib/api";
-import type { PublicConventDetail } from "@/lib/types";
+import type { PublicConventDetail, PublicConventList } from "@/lib/types";
+import { isFresh, readCache, writeCache } from "@/lib/cache";
 
 const DISCORD_URL = "https://discord.com/invite/nanokarrin";
+
+/** localStorage keys (versioned prefix lives in cache.ts). */
+const LIST_KEY = "list";
+const detailKey = (slug: string) => `detail:${slug}`;
+
+/** Data is considered fresh for 5 minutes; older entries revalidate. */
+const TTL_MS = 5 * 60 * 1000;
 
 type Status = "idle" | "loading" | "error" | "ready";
 
@@ -19,30 +27,77 @@ export default function Home() {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
   const [detailErrors, setDetailErrors] = useState<Map<string, string>>(new Map());
+  /**
+   * Stale-while-revalidate notices. Non-null = we are showing cached data
+   * (instantly rendered) and a revalidation attempt failed; the UI keeps
+   * the stale data visible instead of an error wall.
+   */
+  const [listNotice, setListNotice] = useState<string | null>(null);
+  const [detailNotices, setDetailNotices] = useState<Map<string, string>>(new Map());
   const inFlight = useRef<Set<string>>(new Set());
+  const listInFlight = useRef(false);
 
   // "Today" computed on first render (client-only component; fine for a
   // static-exported SPA — see plan §8.2).
   const now = useMemo(() => Date.now(), []);
 
+  const staleNote = (fetchedAt: number) =>
+    `Dane z godz. ${new Date(fetchedAt).toLocaleTimeString("pl-PL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })} — nie udało się pobrać nowszych.`;
+
+  /**
+   * Cache-first list load: cached data renders instantly (status ready),
+   * then revalidates in the background unless the entry is fresh.
+   * Without cache: skeleton + blocking fetch (classic loading state).
+   */
   const loadList = useCallback(async () => {
-    setStatus("loading");
-    setError(null);
+    const cached = readCache<PublicConventList>(LIST_KEY);
+    if (cached) {
+      setSummaries(cached.data.convents);
+      setStatus("ready");
+    }
+
+    if (cached && isFresh(cached, TTL_MS)) return;
+    if (listInFlight.current) return;
+    listInFlight.current = true;
+
+    if (!cached) {
+      setStatus("loading");
+      setError(null);
+    }
     try {
       const list = await fetchPublicConvents();
+      writeCache(LIST_KEY, list);
       setSummaries(list.convents);
       setStatus("ready");
+      setListNotice(null);
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Nie udało się połączyć z API planera.",
-      );
-      setStatus("error");
+      if (cached) {
+        // Keep stale data visible; surface a quiet notice instead.
+        setListNotice(staleNote(cached.fetchedAt));
+      } else {
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Nie udało się połączyć z API planera.",
+        );
+        setStatus("error");
+      }
+    } finally {
+      listInFlight.current = false;
     }
   }, []);
 
   useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
+  /** Force a list revalidation (retry button in the error state). */
+  const retryList = useCallback(() => {
+    // Error state implies no cache existed — loadList does the full
+    // blocking load (skeleton → fetch → ready/error) itself.
     void loadList();
   }, [loadList]);
 
@@ -56,14 +111,61 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  /** Lazy detail fetch + cache. Accordion: one card open at a time. */
+  /**
+   * Background detail revalidation: fetch, swap on success, quiet notice
+   * on failure (stale stays). Never toggles loading state.
+   */
+  const revalidateDetail = useCallback(async (slug: string, cachedAt: number) => {
+    if (inFlight.current.has(slug)) return;
+    inFlight.current.add(slug);
+    try {
+      const detail = await fetchPublicConvent(slug);
+      writeCache(detailKey(slug), detail);
+      setDetails((prev) => new Map(prev).set(slug, detail));
+      setDetailNotices((prev) => {
+        const next = new Map(prev);
+        next.delete(slug);
+        return next;
+      });
+    } catch {
+      setDetailNotices((prev) => new Map(prev).set(slug, staleNote(cachedAt)));
+    } finally {
+      inFlight.current.delete(slug);
+    }
+  }, []);
+
+  /**
+   * Expand/collapse. Detail resolution order:
+   * 1. in-memory detail (this session) — fresh check decides revalidation
+   * 2. localStorage cache — render instantly + background revalidate if stale
+   * 3. nothing — spinner + blocking fetch
+   */
   const toggle = useCallback(
     async (slug: string) => {
       const next = expandedSlug === slug ? null : slug;
       setExpandedSlug(next);
       if (next === null) return;
 
-      if (details.has(slug) || inFlight.current.has(slug)) return;
+      const mem = details.get(slug);
+      if (mem) {
+        const entry = readCache<PublicConventDetail>(detailKey(slug));
+        if (entry && !isFresh(entry, TTL_MS)) void revalidateDetail(slug, entry.fetchedAt);
+        return;
+      }
+
+      const cached = readCache<PublicConventDetail>(detailKey(slug));
+      if (cached) {
+        setDetails((prev) => new Map(prev).set(slug, cached.data));
+        setDetailErrors((prev) => {
+          const nextErrors = new Map(prev);
+          nextErrors.delete(slug);
+          return nextErrors;
+        });
+        if (!isFresh(cached, TTL_MS)) void revalidateDetail(slug, cached.fetchedAt);
+        return;
+      }
+
+      if (inFlight.current.has(slug)) return;
       inFlight.current.add(slug);
       setLoadingSlug(slug);
       setDetailErrors((prev) => {
@@ -73,6 +175,7 @@ export default function Home() {
       });
       try {
         const detail = await fetchPublicConvent(slug);
+        writeCache(detailKey(slug), detail);
         setDetails((prev) => new Map(prev).set(slug, detail));
       } catch (err) {
         setDetailErrors((prev) =>
@@ -90,9 +193,10 @@ export default function Home() {
         setLoadingSlug((cur) => (cur === slug ? null : cur));
       }
     },
-    [expandedSlug, details],
+    [expandedSlug, details, revalidateDetail],
   );
 
+  /** Explicit retry: bypass freshness, force a network fetch. */
   const retryDetail = useCallback(
     (slug: string) => {
       setDetailErrors((prev) => {
@@ -100,14 +204,18 @@ export default function Home() {
         next.delete(slug);
         return next;
       });
-      // Force a fresh fetch by dropping the cached detail, then toggle reopen.
-      setDetails((prev) => {
+      setDetailNotices((prev) => {
         const next = new Map(prev);
         next.delete(slug);
         return next;
       });
       setExpandedSlug(null);
-      // Let state settle, then reopen (fetch runs in toggle).
+      // Drop in-memory copy so toggle re-resolves from cache/network.
+      setDetails((prev) => {
+        const next = new Map(prev);
+        next.delete(slug);
+        return next;
+      });
       window.setTimeout(() => {
         void toggle(slug);
       }, 0);
@@ -148,6 +256,7 @@ export default function Home() {
             detail={details.get(c.slug) ?? null}
             loading={loadingSlug === c.slug}
             error={detailErrors.get(c.slug) ?? null}
+            notice={detailNotices.get(c.slug) ?? null}
             onToggle={() => void toggle(c.slug)}
             onRetry={() => retryDetail(c.slug)}
           />
@@ -191,18 +300,19 @@ export default function Home() {
               className="block text-[13vw] md:text-[8vw] lg:text-[6.5rem] outlined-text animate-rise"
               style={{ animationDelay: "0.15s" }}
             >
-              JEDZIEMY
+              BYLIŚMY
             </span>
           </h1>
           <p
             className="mt-6 max-w-xl text-lg md:text-xl leading-snug text-ink/85 animate-rise"
             style={{ animationDelay: "0.3s" }}
           >
-            Wszystkie konwenty, {" "}
+            Wszystkie konwenty —{" "}
             <span className="font-accent italic text-rose text-2xl md:text-3xl">
-              przyszłe i zakończone,
+              przyszłe i archiwalne
             </span>{" "}
-            w których NanoKarrin bierze lub brało udział. Kliknij konwent, aby zobaczyć nasz program.
+            — w których NanoKarrin bierze udział. Kliknij konwent, aby rozwinąć
+            program: godziny i atrakcje.
           </p>
         </div>
       </section>
@@ -230,7 +340,7 @@ export default function Home() {
               <p className="mt-2 text-sm md:text-base text-ink/80">{error}</p>
               <button
                 type="button"
-                onClick={() => void loadList()}
+                onClick={retryList}
                 className="btn-stamp mt-5 inline-flex items-center gap-2 bg-rose text-paper px-5 py-3 font-display font-extrabold uppercase tracking-wide text-sm border-[3px] border-ink shadow-stamp"
               >
                 Spróbuj ponownie <span aria-hidden>→</span>
@@ -240,6 +350,12 @@ export default function Home() {
 
           {status === "ready" && (
             <>
+              {listNotice && (
+                <p className="text-xs md:text-sm text-ink/60 flex items-center gap-2" role="status">
+                  <span className="inline-block w-2 h-2 rounded-full bg-mint shrink-0" />
+                  {listNotice}
+                </p>
+              )}
               <section aria-labelledby="upcoming-heading">
                 <h2
                   id="upcoming-heading"
@@ -263,8 +379,8 @@ export default function Home() {
                   Archiwum
                 </h2>
                 <p className="font-accent italic text-base md:text-lg text-ink/60 -mt-3 mb-5">
-                  Archiwum jest niekompletne, prowadzimy je dopiero od nowszych
-                  konwentów. NanoKarrin jeździ na konwenty od wielu lat i było na wieludziesięciu imprezach w całej Polsce.
+                  Archiwum jest niekompletne — prowadzimy je dopiero od nowszych
+                  konwentów; starsze występy NanoKarrin nie są tu ujęte.
                 </p>
                 {section("Archiwum", [...archive].reverse(), true)}
               </section>
