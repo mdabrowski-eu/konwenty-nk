@@ -262,6 +262,10 @@ export default function Home() {
                   <span className="inline-block w-3 h-3 rounded-full bg-mint" />
                   Archiwum
                 </h2>
+                <p className="font-accent italic text-base md:text-lg text-ink/60 -mt-3 mb-5">
+                  Archiwum jest niekompletne, prowadzimy je dopiero od nowszych
+                  konwentów. NanoKarrin jeździ na konwenty od wielu lat i było na wieludziesięciu imprezach w całej Polsce.
+                </p>
                 {section("Archiwum", [...archive].reverse(), true)}
               </section>
             </>
